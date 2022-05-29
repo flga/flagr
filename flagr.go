@@ -14,43 +14,82 @@ import (
 
 const intSize = 32 << (^uint(0) >> 63)
 
+// ErrorHandling is an alias for flag.ErrorHandling
 type ErrorHandling = stdflag.ErrorHandling
+
+// Flag is an alias for flag.ErrorHandling
 type Flag = stdflag.Flag
 
+// Aliases for flag.ErrorHandling values
 const (
 	ContinueOnError = stdflag.ContinueOnError
 	ExitOnError     = stdflag.ExitOnError
 	PanicOnError    = stdflag.PanicOnError
 )
 
+// ErrHelp is an alias for flag.ErrHelp
 var ErrHelp = stdflag.ErrHelp
 
+// Set is akin to flag.FlagSet, with value methods (.Int, .String, etc) omitted
 type Set struct {
 	fs *stdflag.FlagSet
 }
 
+// NewSet behaves the same as flag.NewFlagSet
 func NewSet(name string, errorHandling ErrorHandling) Set {
 	fs := stdflag.NewFlagSet(name, errorHandling)
 	return Set{fs}
 }
 
-func (set Set) Output() io.Writer                             { return set.fs.Output() }
-func (set Set) Name() string                                  { return set.fs.Name() }
-func (set Set) ErrorHandling() ErrorHandling                  { return set.fs.ErrorHandling() }
-func (set Set) SetOutput(output io.Writer)                    { set.fs.SetOutput(output) }
-func (set Set) VisitAll(fn func(*Flag))                       { set.fs.VisitAll(fn) }
-func (set Set) Visit(fn func(*Flag))                          { set.fs.Visit(fn) }
-func (set Set) Lookup(name string) *Flag                      { return set.fs.Lookup(name) }
-func (set Set) Set(name, value string) error                  { return set.fs.Set(name, value) }
-func (set Set) PrintDefaults()                                { set.fs.PrintDefaults() }
-func (set Set) NFlag() int                                    { return set.fs.NFlag() }
-func (set Set) Arg(i int) string                              { return set.fs.Arg(i) }
-func (set Set) NArg() int                                     { return set.fs.NArg() }
-func (set Set) Args() []string                                { return set.fs.Args() }
-func (set Set) Parse(arguments []string) error                { return set.fs.Parse(arguments) }
-func (set Set) Parsed() bool                                  { return set.fs.Parsed() }
+// Output is an alias for flag.FlagSet.Output
+func (set Set) Output() io.Writer { return set.fs.Output() }
+
+// Name is an alias for flag.FlagSet.Name
+func (set Set) Name() string { return set.fs.Name() }
+
+// ErrorHandling is an alias for flag.FlagSet.ErrorHandling
+func (set Set) ErrorHandling() ErrorHandling { return set.fs.ErrorHandling() }
+
+// SetOutput is an alias for flag.FlagSet.SetOutput
+func (set Set) SetOutput(output io.Writer) { set.fs.SetOutput(output) }
+
+// VisitAll is an alias for flag.FlagSet.VisitAll
+func (set Set) VisitAll(fn func(*Flag)) { set.fs.VisitAll(fn) }
+
+// Visit is an alias for flag.FlagSet.Visit
+func (set Set) Visit(fn func(*Flag)) { set.fs.Visit(fn) }
+
+// Lookup is an alias for flag.FlagSet.Lookup
+func (set Set) Lookup(name string) *Flag { return set.fs.Lookup(name) }
+
+// Set is an alias for flag.FlagSet.Set
+func (set Set) Set(name, value string) error { return set.fs.Set(name, value) }
+
+// PrintDefaults is an alias for flag.FlagSet.PrintDefaults
+func (set Set) PrintDefaults() { set.fs.PrintDefaults() }
+
+// NFlag is an alias for flag.FlagSet.NFlag
+func (set Set) NFlag() int { return set.fs.NFlag() }
+
+// Arg is an alias for flag.FlagSet.Arg
+func (set Set) Arg(i int) string { return set.fs.Arg(i) }
+
+// NArg is an alias for flag.FlagSet.NArg
+func (set Set) NArg() int { return set.fs.NArg() }
+
+// Args is an alias for flag.FlagSet.Args
+func (set Set) Args() []string { return set.fs.Args() }
+
+// Parse is an alias for flag.FlagSet.Parse
+func (set Set) Parse(arguments []string) error { return set.fs.Parse(arguments) }
+
+// Parsed is an alias for flag.FlagSet.Parsed
+func (set Set) Parsed() bool { return set.fs.Parsed() }
+
+// Init is an alias for flag.FlagSet.Init
 func (set Set) Init(name string, errorHandling ErrorHandling) { set.fs.Init(name, errorHandling) }
 
+// Add creates a new flag on the given Set, returning the underlying value of the provided Getter.
 func Add[T any](set Set, name string, value Getter[T], usage string) *T {
 	set.fs.Var(value, name, usage)
 	return value.Val()
@@ -161,6 +200,7 @@ func MustIPAddrPorts(defaults ...string) Getter[[]netip.AddrPort] {
 type Getter[T any] interface {
 	stdflag.Getter
 	Val() *T
+	IsBoolFlag() bool
 }
 
 var _ Getter[any] = value[any]{}
@@ -283,6 +323,10 @@ func (s *slice[T, S]) String() string {
 	return buf.String()
 }
 
+func (s *slice[T, S]) IsBoolFlag() bool {
+	return reflect.TypeOf(S{}).Elem().Kind() == reflect.Bool
+}
+
 func parseInt[T ~int8 | ~int16 | ~int32 | ~int64 | ~int](s string) (T, error) {
 	v, err := strconv.ParseInt(s, 0, intSize)
 	if err != nil {
@@ -329,6 +373,10 @@ func ptime(layout string) func(string) (time.Time, error) {
 }
 
 type Setter[T any] func(*T, string) error
+
+func SetterFrom[T any](parser Parser[T]) Setter[T] {
+	return set(parser)
+}
 
 func set[T any](parse Parser[T]) Setter[T] {
 	return func(t *T, s string) error {
