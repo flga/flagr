@@ -28,11 +28,12 @@ This isn't the end of the world, and it's pretty much the best we could do pre 1
 
 Flagr aims to solve this by leveraging generics:
 ```go
-n1 := flagr.Add(set, "n1", flagr.Int(1234), "usage")               // n1 is *int
-n2 := flagr.Add(set, "n2", flagr.String("asd"), "usage")           // n2 is *string
-n3 := flagr.Add(set, "n3", CustomInt(42), "usage")                 // n3 is *int64
-n4 := flagr.Add(set, "n4", flagr.Duration(5*time.Second), "usage") // n4 is *time.Duration
-n5 := flagr.Add(set, "n5", flagr.Bool(true), "usage")              // n5 is *bool
+var set flagr.Set
+n1 := flagr.Add(&set, "n1", flagr.Int(1234), "usage")               // n1 is *int
+n2 := flagr.Add(&set, "n2", flagr.String("asd"), "usage")           // n2 is *string
+n3 := flagr.Add(&set, "n3", CustomInt(42), "usage")                 // n3 is *int64
+n4 := flagr.Add(&set, "n4", flagr.Duration(5*time.Second), "usage") // n4 is *time.Duration
+n5 := flagr.Add(&set, "n5", flagr.Bool(true), "usage")              // n5 is *bool
 
 // essentially a re-implementation of flagr.Int64
 func CustomInt(def int64) flagr.Getter[int64] {
@@ -92,7 +93,7 @@ func (f Counter) Val() *int { return f.value }
 ```
 And using it is exactly the same as we've seen before:
 ```go
-count := flagr.Add(set, "c", NewCounter(2), "c") // count is a *int
+count := flagr.Add(&set, "c", NewCounter(2), "c") // count is a *int
 ```
 
 ## Goals

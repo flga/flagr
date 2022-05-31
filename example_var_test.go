@@ -14,7 +14,7 @@ func Example_var() {
 	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
 
 	// Using flagr.Var to reimplement flagr.Int64.
-	a := flagr.Add[int64](set, "a", flagr.Var(42, func(value *int64, s string) error {
+	a := flagr.Add(&set, "a", flagr.Var(42, func(value *int64, s string) error {
 		v, err := strconv.ParseInt(s, 0, 64)
 		if err != nil {
 			return err
@@ -24,15 +24,15 @@ func Example_var() {
 	}), "usage")
 
 	// Using helper functions allows us to have cleaner signatures
-	b := flagr.Add(set, "b", CustomInt64(42), "usage")
+	b := flagr.Add(&set, "b", CustomInt64(42), "usage")
 
 	// Making use of flagr.SetterFrom when setting a value is just a simple assignment (like above).
 	// Also, if the underlying type is a ~bool std/flag bool semantics apply.
-	c := flagr.Add[bool](set, "c", flagr.Var(false, flagr.SetterFrom(strconv.ParseBool)), "usage")
+	c := flagr.Add(&set, "c", flagr.Var(false, flagr.SetterFrom(strconv.ParseBool)), "usage")
 
 	// Making use of MustVar so that we can pass default values as strings and delegate the parsing to flagr.
 	// Makes it much more comfortable to use things that have to be parsed, like urls.
-	d := flagr.Add[*url.URL](set, "d", flagr.MustVar("http://a.com", flagr.SetterFrom(url.Parse)), "usage")
+	d := flagr.Add[*url.URL](&set, "d", flagr.MustVar("http://a.com", flagr.SetterFrom(url.Parse)), "usage")
 
 	args := []string{
 		"-a", "1",

@@ -15,14 +15,14 @@ func Example_slices() {
 
 	// We can use flagr.Slice to create repeatable flags. Custom slice types are supported.
 	type bools []bool
-	a := flagr.Add[bools](set, "a", flagr.Slice(bools{true, false, true}, strconv.ParseBool), "usage")
+	a := flagr.Add[bools](&set, "a", flagr.Slice(bools{true, false, true}, strconv.ParseBool), "usage")
 
 	// Making use of MustSlice so that we can pass default values as strings and delegate the parsing to flagr.
 	// Makes it much more comfortable to use things that have to be parsed, like urls.
-	b := flagr.Add[[]*url.URL](set, "b", flagr.MustSlice([]string{"https://a.com", "https://b.com"}, url.Parse), "usage")
+	b := flagr.Add[[]*url.URL](&set, "b", flagr.MustSlice([]string{"https://a.com", "https://b.com"}, url.Parse), "usage")
 
 	// Using helper functions allows us to have cleaner signatures
-	c := flagr.Add(set, "c", Urls("https://a.com", "https://b.com"), "usage")
+	c := flagr.Add(&set, "c", Urls("https://a.com", "https://b.com"), "usage")
 
 	args := []string{
 		"-a", "-a", // std/flag bool semantics apply

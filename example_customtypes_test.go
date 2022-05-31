@@ -12,11 +12,11 @@ func Example_customTypes() {
 	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
 
 	// A fully custom flagr.Getter implementation.
-	a := flagr.Add(set, "a", NewFileMode(0), "usage")
+	a := flagr.Add(&set, "a", NewFileMode(0), "usage")
 
 	// Another fully custom implementation.
 	// Notice that while the flag type is Counter, f is a *int.
-	b := flagr.Add(set, "b", NewCounter(2), "usage")
+	b := flagr.Add(&set, "b", NewCounter(2), "usage")
 
 	args := []string{
 		"-a", "rw",

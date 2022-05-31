@@ -1,6 +1,7 @@
 package flagr_test
 
 import (
+	"flag"
 	"net/netip"
 	"net/url"
 	"reflect"
@@ -169,7 +170,7 @@ var defaults = struct {
 	MustIPAddrPorts: []string{"127.0.0.1:80", "127.0.0.1:81"},
 }
 
-func makeFlags(s flagr.Set) flags {
+func makeFlags(s *flagr.Set) flags {
 	var vals flags
 	vals.Int = flagr.Add(s, "a00", flagr.Int(defaults.Int), "usage for a00")
 	vals.Ints = flagr.Add(s, "a01", flagr.Ints(defaults.Ints...), "usage for a01")
@@ -225,9 +226,8 @@ func makeFlags(s flagr.Set) flags {
 }
 
 func TestDefaults(t *testing.T) {
-
-	s := flagr.NewSet("test", flagr.ContinueOnError)
-	vals := makeFlags(s)
+	var s flagr.Set
+	vals := makeFlags(&s)
 	if err := s.Parse(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -290,8 +290,8 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestSetters(t *testing.T) {
-	s := flagr.NewSet("test", flagr.ContinueOnError)
-	vals := makeFlags(s)
+	var s flagr.Set
+	vals := makeFlags(&s)
 	args := []string{
 		"-a00", "1",
 		"-a01", "1", "-a01", "2", "-a01", "3",
@@ -412,9 +412,9 @@ func TestDoesntClobberDefault(t *testing.T) {
 	time := musttime("2000-01-01")
 
 	fs := flagr.NewSet("", flagr.ContinueOnError)
-	flagr.Add(fs, "a", flagr.Strings(strings...), "")
-	flagr.Add(fs, "b", flagr.URL(urlv), "")
-	flagr.Add(fs, "c", flagr.Time(timeLayout, musttime("0001-01-01")), "")
+	flagr.Add(&fs, "a", flagr.Strings(strings...), "")
+	flagr.Add(&fs, "b", flagr.URL(urlv), "")
+	flagr.Add(&fs, "c", flagr.Time(timeLayout, musttime("0001-01-01")), "")
 	err := fs.Parse([]string{"-a", "1", "-b", "https://username:password@bar.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -428,6 +428,41 @@ func TestDoesntClobberDefault(t *testing.T) {
 	}
 	if want := musttime("2000-01-01"); !reflect.DeepEqual(time, want) {
 		t.Fatalf("want %v, got %v", want, urlv)
+	}
+}
+
+func TestZeroVal(t *testing.T) {
+	var set flagr.Set
+
+	if got := set.Name(); got != "" {
+		t.Errorf("Name() = %v, want %v", got, "")
+	}
+	if got := set.ErrorHandling(); got != flagr.ContinueOnError {
+		t.Errorf("ErrorHandling() = %v, want %v", got, flagr.ContinueOnError)
+	}
+	if err := set.Parse(nil); err != nil {
+		t.Errorf("Parse() = %v", err)
+	}
+
+	set.Init("foo", flag.ExitOnError)
+	if got := set.Name(); got != "foo" {
+		t.Errorf("Name() = %v, want %v", got, "foo")
+	}
+	if got := set.ErrorHandling(); got != flagr.ExitOnError {
+		t.Errorf("ErrorHandling() = %v, want %v", got, flagr.ExitOnError)
+	}
+}
+
+func TestUsage(t *testing.T) {
+	var set flagr.Set
+	a := 0
+	set.SetUsage(func() {
+		a++
+	})
+	set.Usage()
+
+	if a != 1 {
+		t.Fatal()
 	}
 }
 

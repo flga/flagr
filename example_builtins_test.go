@@ -12,19 +12,19 @@ import (
 func Example_builtins() {
 	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
 	// Builtin types like int, float, etc.
-	a := flagr.Add(set, "a", flagr.Int(42), "usage")
+	a := flagr.Add(&set, "a", flagr.Int(42), "usage")
 
 	// Slices of things, every flag provided by flagr has a slice counterpart.
-	b := flagr.Add(set, "b", flagr.Ints(1, 2, 3), "usage")
+	b := flagr.Add(&set, "b", flagr.Ints(1, 2, 3), "usage")
 
 	// A bool flag has the same semantics as std/flag bools.
-	c := flagr.Add(set, "c", flagr.Bool(false), "usage")
+	c := flagr.Add(&set, "c", flagr.Bool(false), "usage")
 
 	// One of the extra types flagr provides, along with urls, times, etc.
-	d := flagr.Add(set, "d", flagr.IPAddrPort(netip.MustParseAddrPort("127.0.0.1:8080")), "usage")
+	d := flagr.Add(&set, "d", flagr.IPAddrPort(netip.MustParseAddrPort("127.0.0.1:8080")), "usage")
 
 	// Same as above but allows defaults to be provided as strings, delegating parsing to flagr.
-	e := flagr.Add(set, "e", flagr.MustIPAddrPort("127.0.0.1:8080"), "usage")
+	e := flagr.Add(&set, "e", flagr.MustIPAddrPort("127.0.0.1:8080"), "usage")
 
 	args := []string{
 		"-b", "5", "-b", "6",
