@@ -11,7 +11,7 @@ import (
 )
 
 func Example_slices() {
-	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
+	var set flagr.Set
 
 	// We can use flagr.Slice to create repeatable flags. Custom slice types are supported.
 	type bools []bool
@@ -21,7 +21,7 @@ func Example_slices() {
 	// Makes it much more comfortable to use things that have to be parsed, like urls.
 	b := flagr.Add[[]*url.URL](&set, "b", flagr.MustSlice([]string{"https://a.com", "https://b.com"}, url.Parse), "usage")
 
-	// Using helper functions allows us to have cleaner signatures
+	// Using helper functions allows us to have cleaner signatures (type inference is still a little wonky)
 	c := flagr.Add(&set, "c", Urls("https://a.com", "https://b.com"), "usage")
 
 	args := []string{

@@ -9,7 +9,7 @@ import (
 )
 
 func Example_customTypes() {
-	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
+	var set flagr.Set
 
 	// A fully custom flagr.Getter implementation.
 	a := flagr.Add(&set, "a", NewFileMode(0), "usage")

@@ -10,7 +10,7 @@ import (
 )
 
 func Example_builtins() {
-	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
+	var set flagr.Set
 	// Builtin types like int, float, etc.
 	a := flagr.Add(&set, "a", flagr.Int(42), "usage")
 

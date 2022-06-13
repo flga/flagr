@@ -7,13 +7,13 @@ import (
 	"io"
 	"net/netip"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 )
-
-const intSize = 32 << (^uint(0) >> 63)
 
 // ErrorHandling defines how Set.Parse behaves if the parse fails.
 type ErrorHandling = stdflag.ErrorHandling
@@ -37,20 +37,35 @@ var ErrHelp = stdflag.ErrHelp
 // Flag names must be unique within a Set. An attempt to define a flag whose
 // name is already in use will cause a panic.
 type Set struct {
-	fs *stdflag.FlagSet
+	fs         *stdflag.FlagSet
+	provideMap map[string]Source
 }
+
+// Source identifies who set the value for a given flag.
+// Used for dumping the current config with source information.
+type Source string
+
+// List of standard sources, other packages may define their own.
+const (
+	SourceDefaultVal Source = "default"
+	SourceFlags      Source = "flags"
+)
 
 // NewSet returns a new, empty flag set with the specified name and
 // error handling property. If the name is not empty, it will be printed
 // in the default usage message and in error messages.
-func NewSet(name string, errorHandling ErrorHandling) Set {
+func NewSet(name string, errorHandling ErrorHandling) *Set {
 	fs := stdflag.NewFlagSet(name, errorHandling)
-	return Set{fs: fs}
+	return &Set{fs: fs}
 }
 
 func (set *Set) init() {
 	if set.fs == nil {
 		set.fs = &stdflag.FlagSet{}
+	}
+
+	if set.provideMap == nil {
+		set.provideMap = make(map[string]Source)
 	}
 
 	if set.fs.Usage == nil {
@@ -92,18 +107,71 @@ func (set *Set) ErrorHandling() ErrorHandling { set.init(); return set.fs.ErrorH
 func (set *Set) SetOutput(output io.Writer) { set.init(); set.fs.SetOutput(output) }
 
 // VisitAll visits the flags in lexicographical order, calling fn for each.
-// It visits all flags, even those not set.
-func (set *Set) VisitAll(fn func(*Flag)) { set.init(); set.fs.VisitAll(fn) }
+// It visits all flags, even those not set. It will stop walking if the fn returns
+// an error.
+func (set *Set) VisitAll(fn func(*Flag) error) error {
+	set.init()
+	var visitErr error
+
+	set.fs.VisitAll(func(f *Flag) {
+		if visitErr != nil {
+			return
+		}
+
+		visitErr = fn(f)
+	})
+	return visitErr
+}
 
 // Visit visits the flags in lexicographical order, calling fn for each.
-// It visits only those flags that have been set.
-func (set *Set) Visit(fn func(*Flag)) { set.init(); set.fs.Visit(fn) }
+// It visits only those flags that have been set. It will stop walking if the fn returns
+// an error.
+func (set *Set) Visit(fn func(*Flag) error) error {
+	set.init()
+
+	var visitErr error
+	set.fs.Visit(func(f *Flag) {
+		if visitErr != nil {
+			return
+		}
+		visitErr = fn(f)
+	})
+
+	return visitErr
+}
+
+// VisitRemaining visits the flags in lexicographical order, calling fn for each.
+// It visits only those flags that have not yet been set. It will stop walking if the fn returns
+// an error.
+func (set *Set) VisitRemaining(fn func(*Flag) error) error {
+	set.init()
+
+	visited := make(map[string]struct{})
+	set.Visit(func(f *Flag) error {
+		visited[f.Name] = struct{}{}
+		return nil
+	})
+
+	return set.VisitAll(func(f *Flag) error {
+		if _, ok := visited[f.Name]; ok {
+			return nil
+		}
+		return fn(f)
+	})
+}
 
 // Lookup returns the Flag structure of the named flag, returning nil if none exists.
 func (set *Set) Lookup(name string) *Flag { set.init(); return set.fs.Lookup(name) }
 
-// Set sets the value of the named flag.
-func (set *Set) Set(name, value string) error { set.init(); return set.fs.Set(name, value) }
+// Set sets the value of the named flag, annotating it with the given source.
+func (set *Set) Set(src Source, name, value string) error {
+	set.init()
+	if err := set.fs.Set(name, value); err != nil {
+		return err
+	}
+	set.provideMap[name] = src
+	return nil
+}
 
 // UnquoteUsage extracts a back-quoted name from the usage
 // string for a flag and returns it and the un-quoted usage.
@@ -119,6 +187,41 @@ func UnquoteUsage(flag *Flag) (name string, usage string) {
 // documentation for the global function PrintDefaults for more information.
 func (set *Set) PrintDefaults() { set.init(); set.fs.PrintDefaults() }
 
+// PrintValues works like PrintDefaults, but it prints the current value for every
+// flag, annotated with the source of the value.
+//
+// It is meant as a debugging utility to troubleshoot value propagation when using
+// multiple sources for flag values (such as environment and config files).
+func (set *Set) PrintValues() {
+	w := set.Output()
+
+	name := set.fs.Name()
+	if name == "" {
+		fmt.Fprintf(w, "Current configuration:\n")
+	} else {
+		fmt.Fprintf(w, "Current configuration of %s:\n", name)
+	}
+
+	// quick and dirty way to align stuff
+	var prefixes, suffixes []string
+	var max int
+	set.fs.VisitAll(func(flag *Flag) {
+		p := fmt.Sprintf("  -%s %s", flag.Name, flag.Value.String())
+		prefixes = append(prefixes, p)
+		if len(p) > max {
+			max = len(p)
+		}
+
+		s := fmt.Sprintf("(%s)\n", set.provideMap[flag.Name])
+		suffixes = append(suffixes, s)
+		// fmt.Fprintf(w, "  -%s %s (%s)\n", flag.Name, flag.Value.String(), set.provideMap[flag.Name])
+	})
+
+	for i, p := range prefixes {
+		fmt.Fprintf(w, "%s%s%s", p, strings.Repeat(" ", max-len(p)+1), suffixes[i])
+	}
+}
+
 // NFlag returns the number of flags that have been set.
 func (set *Set) NFlag() int { set.init(); return set.fs.NFlag() }
 
@@ -133,17 +236,69 @@ func (set *Set) NArg() int { set.init(); return set.fs.NArg() }
 // Args returns the non-flag arguments.
 func (set *Set) Args() []string { set.init(); return set.fs.Args() }
 
+// Parser is any function that can set flag values, these are optionally used in Parse
+// to populate values from different sources (such as environment values).
+type Parser func(*Set) error
+
 // Parse parses flag definitions from the argument list, which should not
-// include the command name. Must be called after all flags in the FlagSet
+// include the command name. Must be called after all flags in the Set
 // are defined and before flags are accessed by the program.
 // The return value will be ErrHelp if -help or -h were set but not defined.
-func (set *Set) Parse(arguments []string) error { set.init(); return set.fs.Parse(arguments) }
+//
+// After parsing the program arguments, it will call each extraParser, in the order
+// they were provided. If any parser fails Parse will return an error. Extra parsers
+// are only allowed to set flags that have not been set previously, either by
+// the program arguments or any other parser that was called before.
+//
+// This enables you to create a cascade of configuration sources with the precedence
+// you want.
+//
+// In this example, we call Parse in such way that flags have priority over everything,
+// any flag that was not set explicitly may be set by the env parser, any flag
+// that was not set either by the program arguments or the env parser may be set
+// by the config file parser. If you switch the order of env.Parser() and file.Parser()
+// precedence will change accordingly.
+//
+//	set.Parse(
+//		args,          // has precedence over env and cfg file
+//		env.Parser(),  // has precedence over cfg file
+//		file.Parser(), // can only set flags that were not set previously
+//	)
+func (set *Set) Parse(arguments []string, extraParsers ...Parser) error {
+	set.init()
+	if err := set.fs.Parse(arguments); err != nil {
+		return err
+	}
 
-// Parsed reports whether f.Parse has been called.
+	// assume no args were passed in
+	set.fs.VisitAll(func(f *Flag) {
+		set.provideMap[f.Name] = SourceDefaultVal
+	})
+	// overwrite any flag that has been set
+	set.fs.Visit(func(f *Flag) {
+		set.provideMap[f.Name] = SourceFlags
+	})
+
+	for _, parser := range extraParsers {
+		if err := parser(set); err != nil {
+			switch set.fs.ErrorHandling() {
+			case ContinueOnError:
+				return err
+			case ExitOnError:
+				os.Exit(2)
+			case PanicOnError:
+				panic(err)
+			}
+		}
+	}
+	return nil
+}
+
+// Parsed reports whether set.Parse has been called.
 func (set *Set) Parsed() bool { set.init(); return set.fs.Parsed() }
 
 // Init sets the name and error handling property for a flag set.
-// By default, the zero FlagSet uses an empty name and the
+// By default, the zero Set uses an empty name and the
 // ContinueOnError error handling policy.
 func (set *Set) Init(name string, errorHandling ErrorHandling) {
 	set.init()
@@ -455,19 +610,19 @@ type Getter[T any] interface {
 	Val() *T
 }
 
-// Parser is a func that parses a string into T.
-type Parser[T any] func(string) (T, error)
+// ValParser is a func that parses a string into T.
+type ValParser[T any] func(string) (T, error)
 
-// Setter is a function that can, given a string, construct a meaningful value
+// ValSetter is a function that can, given a string, construct a meaningful value
 // and assign it to *T.
-type Setter[T any] func(*T, string) error
+type ValSetter[T any] func(*T, string) error
 
 // Setter from returns a Setter that assigns into *T the result of Parser[T].
-func SetterFrom[T any](parser Parser[T]) Setter[T] {
+func SetterFrom[T any](parser ValParser[T]) ValSetter[T] {
 	return set(parser)
 }
 
-func set[T any](parse Parser[T]) Setter[T] {
+func set[T any](parse ValParser[T]) ValSetter[T] {
 	return func(t *T, s string) error {
 		v, err := parse(s)
 		if err != nil {
@@ -482,13 +637,13 @@ var _ Getter[any] = value[any]{}
 
 type value[T any] struct {
 	Value  *T
-	Setter Setter[T]
+	Setter ValSetter[T]
 }
 
 // Var returns a Getter[T] with the given default value and Setter.
 //
 // Setter is called to parse the provided value and assign it to the underlying value.
-func Var[T any](val T, setter Setter[T]) Getter[T] {
+func Var[T any](val T, setter ValSetter[T]) Getter[T] {
 	return value[T]{
 		Value:  &val,
 		Setter: setter,
@@ -502,7 +657,7 @@ func Var[T any](val T, setter Setter[T]) Getter[T] {
 // into T. If it returns an error, MustVar panics.
 //
 // Setter is called to parse the provided value and assign it to the underlying value.
-func MustVar[T any](defaultValue string, setter Setter[T]) value[T] {
+func MustVar[T any](defaultValue string, setter ValSetter[T]) value[T] {
 	v := new(T)
 	if err := setter(v, defaultValue); err != nil {
 		panic(fmt.Errorf("flag: invalid default value %q: %w", defaultValue, err))
@@ -541,7 +696,7 @@ var _ Getter[[]any] = &slice[any, []any]{}
 type slice[T any, S ~[]T] struct {
 	Value   *S
 	Default S
-	Parse   Parser[T]
+	Parse   ValParser[T]
 	written bool
 }
 
@@ -551,7 +706,7 @@ type slice[T any, S ~[]T] struct {
 // accumulated in S.
 //
 // The value will be initialized with a shallow copy of defaultValue.
-func Slice[T any, S ~[]T](defaultValue S, parse Parser[T]) *slice[T, S] {
+func Slice[T any, S ~[]T](defaultValue S, parse ValParser[T]) *slice[T, S] {
 	vcopy := make(S, len(defaultValue))
 	copy(vcopy, defaultValue)
 	return &slice[T, S]{
@@ -569,7 +724,7 @@ func Slice[T any, S ~[]T](defaultValue S, parse Parser[T]) *slice[T, S] {
 //
 // If the same flag is provided multiple times, the result will be
 // accumulated in a []T.
-func MustSlice[T any](defaults []string, parse Parser[T]) *slice[T, []T] {
+func MustSlice[T any](defaults []string, parse ValParser[T]) *slice[T, []T] {
 	vcopy := make([]T, len(defaults))
 	for i, def := range defaults {
 		v, err := parse(def)
@@ -627,7 +782,8 @@ func (s *slice[T, S]) IsBoolFlag() bool {
 }
 
 func parseInt[T ~int8 | ~int16 | ~int32 | ~int64 | ~int](s string) (T, error) {
-	v, err := strconv.ParseInt(s, 0, intSize)
+	var zero T
+	v, err := strconv.ParseInt(s, 0, int(unsafe.Sizeof(zero)*8))
 	if err != nil {
 		return 0, err
 	}
@@ -635,7 +791,8 @@ func parseInt[T ~int8 | ~int16 | ~int32 | ~int64 | ~int](s string) (T, error) {
 }
 
 func parseUint[T ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uint](s string) (T, error) {
-	v, err := strconv.ParseUint(s, 0, intSize)
+	var zero T
+	v, err := strconv.ParseUint(s, 0, int(unsafe.Sizeof(zero)*8))
 	if err != nil {
 		return 0, err
 	}
@@ -643,7 +800,8 @@ func parseUint[T ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uint](s string) (T, err
 }
 
 func parseFloat[T ~float32 | ~float64](s string) (T, error) {
-	v, err := strconv.ParseFloat(s, intSize)
+	var zero T
+	v, err := strconv.ParseFloat(s, int(unsafe.Sizeof(zero)*8))
 	if err != nil {
 		return 0, err
 	}

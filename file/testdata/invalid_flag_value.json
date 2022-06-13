@@ -1,0 +1,5 @@
+{
+    "my-flag-name": {
+        "I shouldn't be an object": true
+    }
+}

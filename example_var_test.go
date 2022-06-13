@@ -11,7 +11,7 @@ import (
 )
 
 func Example_var() {
-	set := flagr.NewSet("mycmd", flagr.ContinueOnError)
+	var set flagr.Set
 
 	// Using flagr.Var to reimplement flagr.Int64.
 	a := flagr.Add(&set, "a", flagr.Var(42, func(value *int64, s string) error {
