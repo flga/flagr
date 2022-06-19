@@ -66,7 +66,7 @@ func TestMatchesFlagsToEnv(t *testing.T) {
 	)
 	if err := set.Parse(
 		args,
-		env.Parser(
+		env.Parse(
 			env.WithPrefix("app"),
 			env.WithLookupFunc(lookuper),
 			env.WithDotEnv(a1, false),
@@ -166,7 +166,7 @@ func TestFailsOnInvalidVals(t *testing.T) {
 		flagr.Add(&set, "a1", flagr.Int(1), "")
 		err := set.Parse(
 			nil,
-			env.Parser(
+			env.Parse(
 				env.WithPrefix("app"),
 				env.WithLookupFunc(testLookuper(
 					"APP_A1", "not a number",
@@ -184,7 +184,7 @@ func TestFailsOnInvalidVals(t *testing.T) {
 		flagr.Add(&set, "a1", flagr.Ints(1), "")
 		err := set.Parse(
 			nil,
-			env.Parser(
+			env.Parse(
 				env.WithPrefix("app"),
 				env.WithMapper(env.DefaultMapper(",")),
 				env.WithLookupFunc(testLookuper(
@@ -205,7 +205,7 @@ func TestInvalidFile(t *testing.T) {
 		flagr.Add(&set, "a1", flagr.Int(1), "")
 		if err := set.Parse(
 			nil,
-			env.Parser(
+			env.Parse(
 				env.WithPrefix("app"),
 				env.WithDotEnv(ptr("notarealdotenvfile"), false),
 			),
@@ -219,7 +219,7 @@ func TestInvalidFile(t *testing.T) {
 		flagr.Add(&set, "a1", flagr.Int(1), "")
 		if err := set.Parse(
 			nil,
-			env.Parser(
+			env.Parse(
 				env.WithPrefix("app"),
 				env.WithDotEnv(ptr("notarealdotenvfile"), true),
 			),

@@ -479,7 +479,7 @@ func TestParse(t *testing.T) {
 
 func TestDefaults(t *testing.T) {
 	var s flagr.Set
-	vals, defaults := testflags.Make(&s)
+	vals, defaults := testflags.Make(&s, "")
 	if err := s.Parse(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +543,7 @@ func TestDefaults(t *testing.T) {
 
 func TestSetters(t *testing.T) {
 	var s flagr.Set
-	vals, _ := testflags.Make(&s)
+	vals, _ := testflags.Make(&s, "")
 	args := []string{
 		"-a00", "1",
 		"-a01", "1", "-a01", "2", "-a01", "3",

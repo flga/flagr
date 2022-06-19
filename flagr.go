@@ -434,22 +434,22 @@ func Float64s(defaults ...float64) Getter[[]float64] {
 
 // Complex64 returns a Getter that can parse values of type complex64.
 func Complex64(defaultValue complex64) Getter[complex64] {
-	return Var(defaultValue, set(parseComplex64))
+	return Var(defaultValue, set(parseComplex[complex64]))
 }
 
 // Complex64s returns a Getter that can parse and accumulate values of type complex64.
 func Complex64s(defaults ...complex64) Getter[[]complex64] {
-	return Slice(defaults, parseComplex64)
+	return Slice(defaults, parseComplex[complex64])
 }
 
 // Complex128 returns a Getter that can parse values of type complex128.
 func Complex128(defaultValue complex128) Getter[complex128] {
-	return Var(defaultValue, set(parseComplex128))
+	return Var(defaultValue, set(parseComplex[complex128]))
 }
 
 // Complex128s returns a Getter that can parse and accumulate values of type complex128.
 func Complex128s(defaults ...complex128) Getter[[]complex128] {
-	return Slice(defaults, parseComplex128)
+	return Slice(defaults, parseComplex[complex128])
 }
 
 // Bool returns a Getter that can parse values of type bool.
@@ -484,26 +484,26 @@ func Durations(defaults ...time.Duration) Getter[[]time.Duration] {
 
 // Time returns a Getter that can parse values of type time.Time.
 func Time(layout string, defaultValue time.Time) Getter[time.Time] {
-	return Var(defaultValue, set(ptime(layout)))
+	return Var(defaultValue, set(parseTime(layout)))
 }
 
 // MustTime, like Time, returns a Getter that can parse values of type time.Time, but
 // allowing the default value to be provided as a string. It panics if the given string cannot be parsed
 // as time.Time.
 func MustTime(layout string, defaultValue string) Getter[time.Time] {
-	return MustVar(defaultValue, set(ptime(layout)))
+	return MustVar(defaultValue, set(parseTime(layout)))
 }
 
 // Times returns a Getter that can parse and accumulate values of type time.Time.
 func Times(layout string, defaults ...time.Time) Getter[[]time.Time] {
-	return Slice(defaults, ptime(layout))
+	return Slice(defaults, parseTime(layout))
 }
 
 // MustTimes, like Times, returns a Getter that can parse values of type time.Time and accumulate them, but
 // allowing the default values to be provided as strings. It panics if any given string cannot be parsed
 // as time.Time.
 func MustTimes(layout string, defaults ...string) Getter[[]time.Time] {
-	return MustSlice(defaults, ptime(layout))
+	return MustSlice(defaults, parseTime(layout))
 }
 
 // URL returns a Getter that can parse values of type *url.URL.
@@ -808,23 +808,17 @@ func parseFloat[T ~float32 | ~float64](s string) (T, error) {
 	return T(v), nil
 }
 
-func parseComplex64(s string) (complex64, error) {
-	v, err := strconv.ParseComplex(s, 64)
+func parseComplex[T ~complex64 | ~complex128](s string) (T, error) {
+	var zero T
+	v, err := strconv.ParseComplex(s, int(unsafe.Sizeof(zero)*8))
 	if err != nil {
 		return 0, err
 	}
-	return complex64(v), nil
-}
-func parseComplex128(s string) (complex128, error) {
-	v, err := strconv.ParseComplex(s, 128)
-	if err != nil {
-		return 0, err
-	}
-	return complex128(v), nil
+	return T(v), nil
 }
 
 func parseString(s string) (string, error) { return s, nil }
 
-func ptime(layout string) func(string) (time.Time, error) {
+func parseTime(layout string) func(string) (time.Time, error) {
 	return func(s string) (time.Time, error) { return time.Parse(layout, s) }
 }

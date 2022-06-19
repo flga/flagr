@@ -24,17 +24,18 @@ const KeyPathSeparator = "."
 // support dot notation.
 type KeyPath string
 
-// Split is a convenience method to split a KeyPath into sub paths.
+// Split is a convenience method to split a [KeyPath] into sub paths.
 func (k KeyPath) Split() []string {
 	return strings.Split(string(k), KeyPathSeparator)
 }
 
-// Normalizer converts a flag name into a KeyPath.
+// Mapper converts a flag name into a [KeyPath].
 //
-// Sub paths must be separated by KeyPathSeparator and are not allowed to contain
+// Sub paths must be separated by [KeyPathSeparator] and are not allowed to contain
 // it within them.
 //
 // Given a flag name like "api_http_address" and a json config file structured as
+//
 //	{
 //	    "api": {
 //	        "http": {
@@ -42,18 +43,21 @@ func (k KeyPath) Split() []string {
 //	        }
 //	    }
 //	}
-// the corresponding KeyPath should be "api.http.address".
 //
-// If the json file were flat, no normalization would be necessary as long as
+// the corresponding [KeyPath] should be "api.http.address".
+//
+// If the json file were flat, no mapping would be necessary as long as
 // the field name and the flag name are equal:
+//
 //	{
 //		"api_http_address": "0.0.0.0"
 //	}
-// the corresponding KeyPath should be "api_http_address".
-type Normalizer func(flagName string) KeyPath
+//
+// the corresponding [KeyPath] should be "api_http_address".
+type Mapper func(flagName string) KeyPath
 
-// NoopNormalizer returns the given flag name as is.
-func NoopNormalizer(flagName string) KeyPath { return KeyPath(flagName) }
+// NoopMapper returns the given flag name as is.
+func NoopMapper(flagName string) KeyPath { return KeyPath(flagName) }
 
 // DecoderFunc is a function that deserializes data into v. Functions like
 // json.Unmarshal conform to this type.
@@ -62,8 +66,8 @@ type DecoderFunc func(data []byte, v interface{}) error
 // Extension represents a file extension. Values must include the leading dot.
 type Extension string
 
-// Mux maps Extensions to DecoderFuncs, it is valid for the same DecoderFunc to
-// be used for multiple Extensions. For example, if unmarshaling yaml it is
+// Mux maps [Extension] to [DecoderFunc], it is valid for the same [DecoderFunc] to
+// be used for multiple [Extension]. For example, if unmarshaling yaml it is
 // encouraged to map both ".yaml" and ".yml" to yaml.Unmarshal.
 type Mux map[Extension]DecoderFunc
 
@@ -79,32 +83,19 @@ func (m Mux) supportedExts() []Extension {
 
 // Options contains all the options used to parse a config file.
 type Options struct {
-	Mux               Mux        // Maps file extensions to decoders
-	Normalizer        Normalizer // Maps flag names to property paths
-	IgnoreMissingFile bool       // If true, we don't treat fs.ErrNotExist as an error.
-	FS                fs.FS      // If provided, this will be used instead of the primary filesystem.
+	Mapper            Mapper // Maps flag names to property paths
+	IgnoreMissingFile bool   // If true, we don't treat [fs.ErrNotExist] as an error.
+	FS                fs.FS  // If provided, this will be used instead of the primary filesystem.
 }
 
 // Option is a function that mutates Options.
 type Option func(*Options)
 
-// WithDecoder maps the given DecoderFunc to the given Extensions.
-//
-// It does not remove previous mappings but will replace any mapping that has
-// the same Extension.
-func WithDecoder(fn DecoderFunc, exts ...Extension) Option {
+// WithMapper configures Parser to use the given [Mapper] when mapping
+// flag names to [KeyPath].
+func WithMapper(n Mapper) Option {
 	return func(o *Options) {
-		for _, ext := range exts {
-			o.Mux[ext] = fn
-		}
-	}
-}
-
-// WithNormalizer configures Parser to use the given Normalizer when mapping
-// flag names to KeyPaths.
-func WithNormalizer(n Normalizer) Option {
-	return func(o *Options) {
-		o.Normalizer = n
+		o.Mapper = n
 	}
 }
 
@@ -124,62 +115,64 @@ func WithFS(fs fs.FS) Option {
 	}
 }
 
-// Parser returns a flagr.FlagParser that parses the file stored in path and
+// Parse returns a [flagr.FlagParser] that parses the file stored in path and
 // assigns the results to any flags that have not yet been set.
 //
 // Flags cannot have complex values, only primitive values are allowed: strings,
 // bools, ints etc. An exception is made for slices as flags can be repeatable.
 //
 // This is a valid JSON declaration for a flag named "foo".
+//
 //	{
 //		"foo": 42
 //	}
 //
 // So is this (assuming that foo is repeatable, otherwise it will be set to the last value of the array):
+//
 //	{
 //		"foo": [1, 2, 3]
 //	}
 //
-// But this is not, as there is no way to map an object to a flag value:
+// But this is not, as there is no way to map a json object to a flag value:
+//
 //	{
 //		"foo": {"bar": 42}
 //	}
 //
 // The file contents are read and decoded using the decoder mapped to the file's
-// extension. If decoding fails it returns ErrDecode, if no suitable decoder is found
-// it returns ErrUnsupported.
+// extension. If decoding fails it returns [ErrDecode], if no suitable decoder is found
+// it returns [ErrUnsupported].
 //
-// File decoding is controlled by WithDecoder. At least one mapping must be provided.
+// File decoding is controlled by [Mux]. At least one mapping must be provided.
 //
 // If the file cannot be read an error is returned. If it cannot be found and
-// IgnoreMissingFile has been set, the error is omitted and parsing stops.
+// [IgnoreMissingFile] has been set, the error is omitted and parsing stops.
 //
 // After decoding, we will go trough all the flags that have not yet been set,
 // and try to find their values in the decoded result. Mapping flag names
-// to the decoded properties is done using the given Normalizer. If no Normalizer
-// is provided it'll use NoopNormalizer.
+// to the decoded properties is done using the given [Mapper]. If no [Mapper]
+// is provided it'll use [NoopMapper].
 //
 // If no corresponding value can be found, the flag will remain unset.
-// If a value is found it is converted back to a string and fed trough flag.Value.Set,
+// If a value is found it is converted back to a string and fed trough [flag.Value.Set],
 // if this fails we will return the error.
 // If we are unable to convert the value to a string (for example, if it's an object)
-// ErrVal will be returned containing the key that failed and the error.
-func Parser(path *string, options ...Option) flagr.Parser {
+// [ErrVal] will be returned containing the key that failed and the error.
+func Parse(path *string, mux Mux, options ...Option) flagr.Parser {
 	if path == nil {
 		panic("file: path cannot be nil")
 	}
 
 	opts := Options{
-		Mux:               make(Mux),
-		Normalizer:        NoopNormalizer,
+		Mapper:            NoopMapper,
 		IgnoreMissingFile: false,
 	}
 	for _, opt := range options {
 		opt(&opts)
 	}
 
-	if len(opts.Mux) == 0 {
-		panic("file: no extension to decoder mappings provided, use WithDecoder()")
+	if len(mux) == 0 {
+		panic("file: len(mux) cannot be 0")
 	}
 
 	if opts.FS == nil {
@@ -202,11 +195,11 @@ func Parser(path *string, options ...Option) flagr.Parser {
 		}
 
 		ext := Extension(filepath.Ext(*path))
-		decoder, found := opts.Mux[ext]
+		decoder, found := mux[ext]
 		if !found {
 			return ErrUnsupported{
 				Ext:       ext,
-				Available: opts.Mux.supportedExts(),
+				Available: mux.supportedExts(),
 			}
 		}
 
@@ -216,7 +209,7 @@ func Parser(path *string, options ...Option) flagr.Parser {
 		}
 
 		return set.VisitRemaining(func(f *flagr.Flag) error {
-			key := opts.Normalizer(f.Name)
+			key := opts.Mapper(f.Name)
 			wrapper, ok := find(values, key)
 			if !ok {
 				return nil
@@ -239,6 +232,9 @@ func Parser(path *string, options ...Option) flagr.Parser {
 		})
 	}
 }
+
+// Static is a helper for calling [Parse] with a static path.
+func Static(path string) *string { return &path }
 
 var _ fs.FS = osFS{}
 
@@ -308,7 +304,7 @@ func stringify(v reflect.Value, values *[]string) error {
 }
 
 // ErrVal is returned when we're unable to convert a value to a string.
-type ErrVal struct { // TODO: better name for this
+type ErrVal struct {
 	Key KeyPath
 	Err error
 }
@@ -321,8 +317,8 @@ func (e ErrVal) Unwrap() error {
 	return e.Err
 }
 
-// ErrUnsupported is returned when we could not find a DecoderFunc in the given
-// Mux with the provided file's extension.
+// ErrUnsupported is returned when we could not find a [DecoderFunc] in the given
+// [Mux] with the provided file's extension.
 type ErrUnsupported struct {
 	Ext       Extension
 	Available []Extension

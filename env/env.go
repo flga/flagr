@@ -68,6 +68,11 @@ func WithDotEnv(path *string, optional bool) Option {
 	}
 }
 
+// WithStaticDotEnv is an alias for [WithDotEnv] but with a static path.
+func WithStaticDotEnv(path string, optional bool) Option {
+	return WithDotEnv(&path, optional)
+}
+
 // WithMapper tells the parser how to map flags to env vars and, if the value
 // is expected to be a list, how to split it.
 func WithMapper(fn Mapper) Option {
@@ -84,7 +89,7 @@ func WithPrefix(s string) Option {
 	}
 }
 
-func Parser(opts ...Option) flagr.Parser {
+func Parse(opts ...Option) flagr.Parser {
 	options := options{
 		prefix:     "",
 		mapper:     DefaultMapper(""),

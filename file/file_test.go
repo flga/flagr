@@ -27,18 +27,18 @@ func TestParserInvariants(t *testing.T) {
 				t.Fatalf("panic = %v, want %v", got, want)
 			}
 		}()
-		file.Parser(nil)
+		file.Parse(nil, nil)
 	})
 
 	t.Run("panics if no mappings provided", func(t *testing.T) {
 		defer func() {
 			got := recover()
-			want := "file: no extension to decoder mappings provided, use WithDecoder()"
+			want := "file: len(mux) cannot be 0"
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("panic = %v, want %v", got, want)
 			}
 		}()
-		file.Parser(new(string))
+		file.Parse(new(string), nil)
 	})
 
 	t.Run("uses system's filesystem if no FS provided", func(t *testing.T) {
@@ -47,9 +47,9 @@ func TestParserInvariants(t *testing.T) {
 
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if err != nil {
@@ -63,9 +63,9 @@ func TestParserInvariants(t *testing.T) {
 
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if err != nil {
@@ -83,10 +83,10 @@ func TestParserInvariants(t *testing.T) {
 
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
-				file.WithNormalizer(func(flagName string) file.KeyPath {
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
+				file.WithMapper(func(flagName string) file.KeyPath {
 					return file.KeyPath(strings.ReplaceAll(flagName, "/", "-"))
 				}),
 			),
@@ -104,22 +104,22 @@ func TestParserInvariants(t *testing.T) {
 		var set flagr.Set
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/______not a file.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/______not a file.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if want := fs.ErrNotExist; !errors.Is(err, want) {
 			t.Fatalf("err = %v, want %v", err, want)
 		}
 	})
-	t.Run("does not fail if file doesn't exist but ignore missing is defined", func(t *testing.T) {
+	t.Run("does not fail if file doesn't exist but ignore missing is true", func(t *testing.T) {
 		var set flagr.Set
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/______not a file.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/______not a file.json"),
+				file.Mux{".json": json.Unmarshal},
 				file.IgnoreMissingFile(),
 			),
 		)
@@ -132,9 +132,9 @@ func TestParserInvariants(t *testing.T) {
 		var set flagr.Set
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".notjson"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".notjson": json.Unmarshal},
 			),
 		)
 		if want := (file.ErrUnsupported{}); !errors.As(err, &want) {
@@ -146,9 +146,9 @@ func TestParserInvariants(t *testing.T) {
 		var set flagr.Set
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/invalid_json.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/invalid_json.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if want := (file.ErrDecode{}); !errors.As(err, &want) {
@@ -161,9 +161,9 @@ func TestParserInvariants(t *testing.T) {
 		flagr.Add(&set, "my-flag-name", flagr.String(""), "")
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/invalid_flag_value.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/invalid_flag_value.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if want := (file.ErrVal{}); !errors.As(err, &want) {
@@ -176,9 +176,9 @@ func TestParserInvariants(t *testing.T) {
 		flagr.Add(&set, "my-flag-name", faultyFlag(), "")
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if want := errSentinel; !errors.Is(err, want) {
@@ -193,9 +193,9 @@ func TestParserInvariants(t *testing.T) {
 			[]string{
 				"-my-flag-name", "123",
 			},
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if err != nil {
@@ -212,9 +212,9 @@ func TestParserInvariants(t *testing.T) {
 		flagr.Add(&set, "this-is-not-in-the-json-file", flagr.String("asd"), "")
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("testdata/barebones.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("testdata/barebones.json"),
+				file.Mux{".json": json.Unmarshal},
 			),
 		)
 		if err != nil {
@@ -227,9 +227,9 @@ func TestParserInvariants(t *testing.T) {
 		mockFS := &mockFS{}
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("bananas.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("bananas.json"),
+				file.Mux{".json": json.Unmarshal},
 				file.WithFS(mockFS),
 			),
 		)
@@ -246,9 +246,9 @@ func TestParserInvariants(t *testing.T) {
 		var set flagr.Set
 		err := set.Parse(
 			nil,
-			file.Parser(
-				ptr("bananas.json"),
-				file.WithDecoder(json.Unmarshal, ".json"),
+			file.Parse(
+				file.Static("bananas.json"),
+				file.Mux{".json": json.Unmarshal},
 				file.WithFS(faultyFS{}),
 			),
 		)
@@ -258,14 +258,84 @@ func TestParserInvariants(t *testing.T) {
 	})
 }
 
-func TestJsonValues(t *testing.T) {
+func TestFlatJson(t *testing.T) {
 	var set flagr.Set
-	flags, _ := testflags.Make(&set)
+	flags, _ := testflags.Make(&set, "")
 	err := set.Parse(
 		nil,
-		file.Parser(
-			ptr("testdata/flat.json"),
-			file.WithDecoder(json.Unmarshal, ".json"),
+		file.Parse(
+			file.Static("testdata/flat.json"),
+			file.Mux{".json": json.Unmarshal},
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := testflags.Flags{
+		Int:             ptr(int(10)),
+		Ints:            ptr([]int{10, 20}),
+		Int8:            ptr(int8(10)),
+		Int8s:           ptr([]int8{10, 20}),
+		Int16:           ptr(int16(10)),
+		Int16s:          ptr([]int16{10, 20}),
+		Int32:           ptr(int32(10)),
+		Int32s:          ptr([]int32{10, 20}),
+		Int64:           ptr(int64(10)),
+		Int64s:          ptr([]int64{10, 20}),
+		Uint:            ptr(uint(10)),
+		Uints:           ptr([]uint{10, 20}),
+		Uint8:           ptr(uint8(10)),
+		Uint8s:          ptr([]uint8{10, 20}),
+		Uint16:          ptr(uint16(10)),
+		Uint16s:         ptr([]uint16{10, 20}),
+		Uint32:          ptr(uint32(10)),
+		Uint32s:         ptr([]uint32{10, 20}),
+		Uint64:          ptr(uint64(10)),
+		Uint64s:         ptr([]uint64{10, 20}),
+		Float32:         ptr(float32(1.0)),
+		Float32s:        ptr([]float32{1.0, 2.0}),
+		Float64:         ptr(float64(1.0)),
+		Float64s:        ptr([]float64{1.0, 2.0}),
+		Complex64:       ptr(complex64(1i)),
+		Complex64s:      ptr([]complex64{1i, 2i}),
+		Complex128:      ptr(complex128(1i)),
+		Complex128s:     ptr([]complex128{1i, 2i}),
+		Bool:            ptr(false),
+		Bools:           ptr([]bool{false, true}),
+		String:          ptr("qwe"),
+		Strings:         ptr([]string{"qwe", "zxc"}),
+		Duration:        ptr(1 * time.Second),
+		Durations:       ptr([]time.Duration{1 * time.Second, 2 * time.Second}),
+		Time:            ptr(testflags.MustTime("4242-02-25")),
+		MustTime:        ptr(testflags.MustTime("4242-02-25")),
+		Times:           ptr([]time.Time{testflags.MustTime("4242-02-25"), testflags.MustTime("2000-02-25")}),
+		MustTimes:       ptr([]time.Time{testflags.MustTime("4242-02-25"), testflags.MustTime("2000-02-25")}),
+		URL:             ptr(testflags.MustURL("https://go.devs")),
+		MustURL:         ptr(testflags.MustURL("https://go.devs")),
+		URLs:            ptr([]*url.URL{testflags.MustURL("https://go.devs"), testflags.MustURL("https://go.devs/tour/")}),
+		MustURLs:        ptr([]*url.URL{testflags.MustURL("https://go.devs"), testflags.MustURL("https://go.devs/tour/")}),
+		IPAddr:          ptr(netip.MustParseAddr("127.0.0.2")),
+		MustIPAddr:      ptr(netip.MustParseAddr("127.0.0.2")),
+		IPAddrs:         ptr([]netip.Addr{netip.MustParseAddr("127.0.0.2"), netip.MustParseAddr("127.0.0.3")}),
+		MustIPAddrs:     ptr([]netip.Addr{netip.MustParseAddr("127.0.0.2"), netip.MustParseAddr("127.0.0.3")}),
+		IPAddrPort:      ptr(netip.MustParseAddrPort("127.0.0.1:81")),
+		MustIPAddrPort:  ptr(netip.MustParseAddrPort("127.0.0.1:81")),
+		IPAddrPorts:     ptr([]netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:81"), netip.MustParseAddrPort("127.0.0.1:82")}),
+		MustIPAddrPorts: ptr([]netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:81"), netip.MustParseAddrPort("127.0.0.1:82")}),
+	}
+	if diff := cmp.Diff(want, flags, cmpopts.IgnoreUnexported(netip.Addr{}, netip.AddrPort{})); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestNestedJson(t *testing.T) {
+	var set flagr.Set
+	flags, _ := testflags.Make(&set, "foo.bar.baz.")
+	err := set.Parse(
+		nil,
+		file.Parse(
+			file.Static("testdata/nested.json"),
+			file.Mux{".json": json.Unmarshal},
 		),
 	)
 	if err != nil {
